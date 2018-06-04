@@ -35,11 +35,11 @@ type Endpoints struct {
 // the corresponding method on the provided service. Useful in a users server.
 func MakeServerEndpoints(s Service) Endpoints {
 	return Endpoints{
-		PostProfileEndpoint:   MakePostProfileEndpoint(s),
-		GetProfileEndpoint:    MakeGetProfileEndpoint(s),
-		PutProfileEndpoint:    MakePutProfileEndpoint(s),
-		PatchProfileEndpoint:  MakePatchProfileEndpoint(s),
-		DeleteProfileEndpoint: MakeDeleteProfileEndpoint(s),
+		PostUserEndpoint:   MakePostUserEndpoint(s),
+		GetUserEndpoint:    MakeGetUserEndpoint(s),
+		PutUserEndpoint:    MakePutUserEndpoint(s),
+		PatchUserEndpoint:  MakePatchUserEndpoint(s),
+		DeleteUserEndpoint: MakeDeleteUserEndpoint(s),
 	}
 }
 
@@ -146,7 +146,7 @@ func MakePostUserEndpoint(s Service) endpoint.Endpoint {
 func MakeGetUserEndpoint(s Service) endpoint.Endpoint {
 	return func(ctx context.Context, request interface{}) (response interface{}, err error) {
 		req := request.(getUserRequest)
-		u, e := s.GetUser(ctx, req.User)
+		u, e := s.GetUser(ctx, req.Username)
 		return getUserResponse{User: u, Err: e}, nil
 	}
 }
