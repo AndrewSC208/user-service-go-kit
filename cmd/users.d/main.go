@@ -8,15 +8,26 @@ import (
 	"os/signal"
 	"syscall"
 
-	svc "github.com/AndrewSC208/user-service-go-kit"
 	"github.com/go-kit/kit/log"
+	"github.com/jinzhu/gorm"
+
+	svc "github.com/AndrewSC208/user-service-go-kit"
 )
 
 func main() {
 	var (
 		httpAddr = flag.String("http.addr", ":8080", "HTTP listen address")
+		storeUrl = flag.String("db.url", "postgresql://root@localhost:26257/bank?sslmode=disable", "STORE db url")
 	)
 	flag.Parse()
+
+	db, err := gorm.Open("postgres", storeUrl)
+	if err != nil {
+		panic("failed to connect database")
+	}
+	defer db.Close()
+
+	db.AutoMigrate(&svc.UserModel{})
 
 	var logger log.Logger
 	{
@@ -27,7 +38,10 @@ func main() {
 
 	var s svc.Service
 	{
-		s = svc.NewInmemService()
+		// create new service, and pass store in
+		s = svc.NewService(*db)
+
+		// Setup logging
 		s = svc.LoggingMiddleware(logger)(s)
 	}
 

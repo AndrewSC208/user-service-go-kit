@@ -3,16 +3,20 @@ package users
 import (
 	"context"
 	"errors"
-	"sync"
+	"fmt"
+
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
+
 )
 
 // Service is a simple CRUD interface for users
 type Service interface {
-	PostUser(ctx context.Context, u User) error
-	GetUser(ctx context.Context, username string) (User, error)
-	PutUser(ctx context.Context, username string, u User) error
-	PatchUser(ctx context.Context, username string, u User) error
-	DeleteUser(ctx context.Context, username string) error
+	PostUser  (ctx context.Context, u User) error
+	GetUser   (ctx context.Context, id string) (User, error)
+	PutUser   (ctx context.Context, id string, u User) error
+	PatchUser (ctx context.Context, id string, u User) error
+	DeleteUser(ctx context.Context, id string) error
 }
 
 // User represents a single user
@@ -25,81 +29,134 @@ type User struct {
 	Role      string `json:"role"`
 }
 
+// UserModel represents the model of a user
+type UserModel struct {
+	gorm.Model
+	FirstName    string
+	LastName     string
+	Username	 string
+	Email        string  `gorm:"type:varchar(100);unique_index"`
+	Password 	 string
+	Role         string  `gorm:"size:255"`
+}
+
+// errors
 var (
 	ErrInconsistentIDs = errors.New("inconsistent IDs")
 	ErrAlreadyExists   = errors.New("already exists")
 	ErrNotFound        = errors.New("not found")
 )
 
-type inmemService struct {
-	mtx sync.RWMutex
-	m   map[string]User
+type service struct {
+	db gorm.DB
 }
 
-func NewInmemService() Service {
-	return &inmemService{
-		m: map[string]User{},
-	}
+func NewService(db gorm.DB) Service {
+	return &service{db}
 }
 
-func (s *inmemService) PostUser(ctx context.Context, u User) error {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	// use username for key
-	if _, ok := s.m[u.Username]; ok {
-		return ErrAlreadyExists // POST = create, don't overwrite
-	}
-	s.m[u.Username] = u
+/**
+ * SETUP STORE
+ */
+func (s *service) PostUser(ctx context.Context, u User) error {
+	// POST = create, don't overwrite
+	s.db.Create(&User{u.FirstName, u.LastName, u.Username, u.Password, u.Email, u.Role})
+
 	return nil
 }
 
-func (s *inmemService) GetUser(ctx context.Context, username string) (User, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-	p, ok := s.m[username]
-	if !ok {
-		return User{}, ErrNotFound
-	}
-	return p, nil
+func (s *service) GetUser(ctx context.Context, id string) (User, error) {
+	// GET = if found, return user
+	var user User
+	s.db.First(&user, id)
+
+	return user, nil
 }
 
-func (s *inmemService) PutUser(ctx context.Context, username string, u User) error {
-	if username != u.Username {
-		return ErrInconsistentIDs
-	}
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	s.m[username] = u // PUT = create or update
+func (s *service) PutUser(ctx context.Context, id string, u User) error {
+	// PUT = create or update
+
+	// find in orm
+	var user User
+	s.db.First(&user, id)
+
+	fmt.Println("USER IN DB",user)
+
+	// if exists update
+	// else create
+
 	return nil
 }
 
-func (s *inmemService) PatchUser(ctx context.Context, username string, u User) error {
-	if u.Username != "" && username != u.Username {
-		return ErrInconsistentIDs
-	}
+func (s *service) PatchUser(ctx context.Context, id string, u User) error {
+	// PATCH = update existing, don't create
+	// find in orm
+	var user User
+	s.db.First(&user, id)
 
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	fmt.Println("USER IN DB",user)
 
-	existing, ok := s.m[username]
-	if !ok {
-		return ErrNotFound // PATCH = update existing, don't create
-	}
-
-	if u.FirstName != "" {
-		existing.FirstName = u.FirstName
-	}
-
-	s.m[username] = existing
 	return nil
 }
 
-func (s *inmemService) DeleteUser(ctx context.Context, username string) error {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	if _, ok := s.m[username]; !ok {
-		return ErrNotFound
-	}
-	delete(s.m, username)
+func (s *service) DeleteUser(ctx context.Context, id string) error {
+	// DELETE = if found, delete user
+	var user User
+	s.db.Delete(&user)
+
 	return nil
 }
+
+//func (s *inmemService) PutUser(ctx context.Context, username string, u User) error {
+//	if username != u.Username {
+//		return ErrInconsistentIDs
+//	}
+//	s.mtx.Lock()
+//	defer s.mtx.Unlock()
+//	s.m[username] = u // PUT = create or update
+//	return nil
+//}
+
+//func (s *inmemService) PatchUser(ctx context.Context, username string, u User) error {
+//	if u.Username != "" && username != u.Username {
+//		return ErrInconsistentIDs
+//	}
+//
+//	s.mtx.Lock()
+//	defer s.mtx.Unlock()
+//
+//	existing, ok := s.m[username]
+//	if !ok {
+//		return ErrNotFound // PATCH = update existing, don't create
+//	}
+//
+//	// fields that can be modified
+//	if u.FirstName != "" {
+//		existing.FirstName = u.FirstName
+//	}
+//
+//	if u.LastName != "" {
+//		existing.LastName = u.LastName
+//	}
+//
+//	if u.Email != "" {
+//		existing.Email= u.Email
+//	}
+//
+//	if u.Role!= "" {
+//		existing.Role= u.Role
+//	}
+//
+//	s.m[username] = existing
+//	return nil
+//}
+
+//func (s *inmemService) DeleteUser(ctx context.Context, username string) error {
+//	s.mtx.Lock()
+//	defer s.mtx.Unlock()
+//	if _, ok := s.m[username]; !ok {
+//		return ErrNotFound
+//	}
+//	delete(s.m, username)
+//	return nil
+//}
